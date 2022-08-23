@@ -22,6 +22,10 @@ const KEY_UNICODE_LAYER_NAME: &[u8; 4] = b"luni";
 /// Key of `Section divider setting (Photoshop 6.0)`, "lsct"
 const KEY_SECTION_DIVIDER_SETTING: &[u8; 4] = b"lsct";
 
+const KEY_SMART_OBJECT: &[u8; 4] = b"SoLd";
+
+const KEY_PLACED_LAYER: &[u8; 4] = b"PlLd";
+
 pub mod groups;
 pub mod layer;
 pub mod layers;
@@ -413,6 +417,7 @@ fn read_layer_record(cursor: &mut PsdCursor) -> Result<LayerRecord, PsdLayerErro
     let mut divider_type = None;
     // There can be multiple additional layer information sections so we'll loop
     // until we stop seeing them.
+    println!("{:?}",name.clone());
     while cursor.peek_4() == SIGNATURE_EIGHT_BIM || cursor.peek_4() == SIGNATURE_EIGHT_B64 {
         let _signature = cursor.read_4();
         let mut key = [0; 4];
@@ -440,12 +445,95 @@ fn read_layer_record(cursor: &mut PsdCursor) -> Result<LayerRecord, PsdLayerErro
                 }
             }
 
+            KEY_SMART_OBJECT =>
+            {
+                
+                let pos = cursor.position();
+                let _identifier = cursor.read_4();
+                let _version = cursor.read_4();
+                let _descriptor_version = cursor.read_4();
+                let _class_id_name_len = cursor.read_u32()  * 2;
+                let _class_id_name = cursor.read(_class_id_name_len);
+                let _class_id_name = String::from_utf8_lossy(_class_id_name);
+                
+                //let _class_id_len = cursor.read_4();
+                let _class_id_len = cursor.read_u32();
+                let class_id;
+                if _class_id_len == 0
+                {
+                    let kek = cursor.read_4();
+                    class_id = String::from_utf8_lossy(kek);
+                }
+                else
+                {
+                    let kek = cursor.read(_class_id_len as u32);
+                    class_id = String::from_utf8_lossy(kek);
+                }
+                 let number_of_items = cursor.read_u32();
+
+                let mut i =0;
+                while i<number_of_items
+                {
+                    let mut item_key_len = cursor.read_u32();
+                 
+                    if item_key_len ==0
+                    {
+                        item_key_len =4;
+                    }
+                    
+                    let item_key = cursor.read(item_key_len);
+                    let item_key = String::from_utf8_lossy(item_key);
+                    
+                    let type_key = cursor.read_4();
+                    let type_key = String::from_utf8_lossy(type_key);
+                    println!("type_key: {:?}",type_key);
+
+                    let string_item_len = cursor.read_u32()  * 2;
+                    println!("string_item_len: {:?}",string_item_len);
+                   /* let string_item = cursor.read(string_item_len);
+                    let string_item = String::from_utf8_lossy(string_item);
+                    */
+                    i+=1;
+                }
+             //   let items_in_descriptor = cursor.read_4();
+
+                //let kek = String::from_utf8_lossy(version);
+                //let mut kek = kek.to_string();
+                //let descriptor_version = cursor.read_4();
+
+                cursor.seek(pos + additional_layer_info_len as u64);
+            }
+
+            KEY_PLACED_LAYER =>
+            {
+                let pos = cursor.position();
+                let _identifier = cursor.read_4();
+                let _version = cursor.read_4();
+                let id_len = cursor.read_u8();
+                let id = cursor.read(id_len as u32);
+                let id = String::from_utf8_lossy(id);
+                let _page_number = cursor.read_4();
+                let _total_pages = cursor.read_4();
+                let _anti_alias_policy = cursor.read_4();
+                let _placed_layer_type = cursor.read_4();
+                let transform_x = cursor.read_f64();
+                let transform_y = cursor.read_f64();
+
+                println!("x: {:?}, y: {:?}",transform_x,transform_y);
+                cursor.seek(pos + additional_layer_info_len as u64);
+            }
             // TODO: Skipping other keys until we implement parsing for them
-            _ => {
+            v => {
+                let kek = String::from_utf8_lossy(v);
+                //let descriptor_version = cursor.read_4();
+                println!("Other properties {:?}",kek);
                 cursor.read(additional_layer_info_len);
             }
         }
     }
+
+
+    
 
     Ok(LayerRecord {
         name,
