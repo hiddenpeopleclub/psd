@@ -26,6 +26,24 @@ const KEY_SMART_OBJECT: &[u8; 4] = b"SoLd";
 
 const KEY_PLACED_LAYER: &[u8; 4] = b"PlLd";
 
+
+const KEY_REFERENCE: &[u8; 4] = b"obj ";
+
+const KEY_DESCRIPTOR: &[u8; 4] = b"Objc";
+
+const KEY_LIST: &[u8; 4] = b"VlLs";
+
+
+const KEY_DOUBLE: &[u8; 4] = b"doub";
+
+const KEY_UNIT_FLOAT: &[u8; 4] = b"UntF";
+
+const KEY_STRING: &[u8; 4] = b"TEXT";
+
+const KEY_ENUMERATED: &[u8; 4] = b"enum";
+
+const KEY_INTEGER: &[u8; 4] = b"long";
+
 pub mod groups;
 pub mod layer;
 pub mod layers;
@@ -452,55 +470,8 @@ fn read_layer_record(cursor: &mut PsdCursor) -> Result<LayerRecord, PsdLayerErro
                 let _identifier = cursor.read_4();
                 let _version = cursor.read_4();
                 let _descriptor_version = cursor.read_4();
-                let _class_id_name_len = cursor.read_u32()  * 2;
-                let _class_id_name = cursor.read(_class_id_name_len);
-                let _class_id_name = String::from_utf8_lossy(_class_id_name);
-                
-                //let _class_id_len = cursor.read_4();
-                let _class_id_len = cursor.read_u32();
-                let class_id;
-                if _class_id_len == 0
-                {
-                    let kek = cursor.read_4();
-                    class_id = String::from_utf8_lossy(kek);
-                }
-                else
-                {
-                    let kek = cursor.read(_class_id_len as u32);
-                    class_id = String::from_utf8_lossy(kek);
-                }
-                 let number_of_items = cursor.read_u32();
-
-                let mut i =0;
-                while i<number_of_items
-                {
-                    let mut item_key_len = cursor.read_u32();
-                 
-                    if item_key_len ==0
-                    {
-                        item_key_len =4;
-                    }
-                    
-                    let item_key = cursor.read(item_key_len);
-                    let item_key = String::from_utf8_lossy(item_key);
-                    
-                    let type_key = cursor.read_4();
-                    let type_key = String::from_utf8_lossy(type_key);
-                    println!("type_key: {:?}",type_key);
-
-                    let string_item_len = cursor.read_u32()  * 2;
-                    println!("string_item_len: {:?}",string_item_len);
-                   /* let string_item = cursor.read(string_item_len);
-                    let string_item = String::from_utf8_lossy(string_item);
-                    */
-                    i+=1;
-                }
-             //   let items_in_descriptor = cursor.read_4();
-
-                //let kek = String::from_utf8_lossy(version);
-                //let mut kek = kek.to_string();
-                //let descriptor_version = cursor.read_4();
-
+              
+                read_descriptor(cursor);
                 cursor.seek(pos + additional_layer_info_len as u64);
             }
 
@@ -519,7 +490,8 @@ fn read_layer_record(cursor: &mut PsdCursor) -> Result<LayerRecord, PsdLayerErro
                 let transform_x = cursor.read_f64();
                 let transform_y = cursor.read_f64();
 
-                println!("x: {:?}, y: {:?}",transform_x,transform_y);
+
+                println!("transform: x: {:?}, y: {:?}",transform_x,transform_y);
                 cursor.seek(pos + additional_layer_info_len as u64);
             }
             // TODO: Skipping other keys until we implement parsing for them
@@ -548,4 +520,136 @@ fn read_layer_record(cursor: &mut PsdCursor) -> Result<LayerRecord, PsdLayerErro
         blend_mode,
         divider_type,
     })
+}
+
+
+fn read_descriptor(cursor: &mut PsdCursor)
+{
+    let _class_id_name = cursor.read_unicode_string_padding(1);
+
+    println!("_class_id_name: {:?}",_class_id_name);
+
+
+    let class_id = read_4bLen_VString(cursor);
+    
+    println!("_class_id: {:?}",class_id);
+   
+    let number_of_items = cursor.read_u32();
+
+    let mut i =0;
+    while i<number_of_items
+    {
+
+        let item_key = read_4bLen_VString(cursor);
+        println!("item_key: {:?}",item_key);
+   
+        read_OS_type_key(cursor);
+       // let type_key = cursor.read_4();
+     
+        i+=1;
+    }
+ //   let items_in_descriptor = cursor.read_4();
+
+    //let kek = String::from_utf8_lossy(version);
+    //let mut kek = kek.to_string();
+    //let descriptor_version = cursor.read_4();
+
+}
+
+
+fn read_OS_type_key(cursor: &mut PsdCursor)
+{
+    let mut type_key = [0; 4];
+       
+    type_key.copy_from_slice(cursor.read_4());
+ 
+   
+    match &type_key {
+        KEY_STRING=>
+        {  
+            println!("reading string");
+            let string_item = cursor.read_unicode_string_padding(1);
+            println!("string_item: {:?}",string_item);
+
+        }
+
+        KEY_INTEGER =>
+        {  
+            println!("reading integer");
+            let integer_value = cursor.read_i32();
+            println!("integer_value: {:?}",integer_value);
+
+        }
+
+        KEY_DESCRIPTOR =>
+        {
+            println!("reading descriptor");
+            read_descriptor(cursor);
+
+        }
+
+        KEY_LIST =>
+        {   
+            println!("reading list");
+            let item_count = cursor.read_i32();
+            let mut i =0;
+            while i < item_count
+            {
+                read_OS_type_key(cursor);
+                i+=1;
+            }
+
+        }
+
+        KEY_DOUBLE =>
+        {
+            println!("reading double");
+            let double_value = cursor.read_f64();
+            println!("double_value: {:?}",double_value);
+        }
+
+        KEY_ENUMERATED =>
+        {
+            println!("reading enumerated");
+
+            let type_value = read_4bLen_VString(cursor);
+            println!("type_value: {:?}",type_value);
+
+            let enum_value = read_4bLen_VString(cursor);
+            println!("enum_value: {:?}",enum_value);
+       
+
+        }
+
+        KEY_UNIT_FLOAT =>
+        {
+            println!("reading unit float");
+            let unit = cursor.read_4();
+            let unit = String::from_utf8_lossy(unit);
+
+            println!("unit: {:?}",unit);
+
+            let value = cursor.read_f64();
+            println!("value: {:?}",value);
+        }
+        v=>
+        {   
+            println!("other value: {:?}",String::from_utf8_lossy(v));
+        }
+    }
+   
+}
+
+fn read_4bLen_VString(cursor: &mut PsdCursor) -> String
+{
+    let mut len = cursor.read_u32();
+     
+    if len ==0
+    {
+        len =4;
+    }
+    
+    let value = cursor.read(len);
+    return String::from_utf8_lossy(value).to_string();
+     
 }
